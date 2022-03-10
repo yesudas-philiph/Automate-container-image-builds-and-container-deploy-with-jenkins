@@ -1,0 +1,6 @@
+[build]
+ipv4_address ansible_user="ec2-user"
+
+
+[test]
+ipv4_address ansible_user="ec2-user" 

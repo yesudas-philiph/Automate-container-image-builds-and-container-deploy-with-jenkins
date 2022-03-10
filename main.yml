@@ -1,0 +1,143 @@
+---
+- name: "docke image from git"
+  hosts: build
+  become: true
+  vars:
+    packages:
+      - git
+      - pip
+      - docker
+    repo_url: "https://github.com/yesudas-philiph/flask-app.git"
+    clone_dir: "/var/myapp/" 
+    image_name: "yesudasphiliph/newflaskapp"
+  vars_files: creds
+
+  tasks: 
+
+    - name: "package installation"
+      yum:
+        name: "{{ packages }}"
+        state: present
+    
+    - name: "Adding Ec2-user to docker group"
+      user:
+        name: "ec2-user"
+        groups:
+          - docker
+        append: true
+
+    - name: "installing python library for the Docker Engine API on build"
+      pip:
+        name: docker-py
+            
+    - name: "starting and enabling docker"
+      service:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: "git cloning"
+      when: ansible_default_ipv4.address  in groups.build
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ clone_dir }}"  
+      register: git_stat
+    
+    - name : "details of git clonining"
+      debug: 
+       msg: "{{ git_stat }}"
+
+    - name: "docker login - only when updated git cloned"
+      when: git_stat.changed == true
+      docker_login:
+        username: "{{ docker_user }}"
+        password: "{{ docker_pass }}"  
+
+    - name: "building, tagging and pushing docker image to docker hub"
+      when: git_stat.changed == true
+      docker_image:
+        source: build
+        build:
+          pull: yes 
+          path: "{{ clone_dir }}"
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+        force_tag: yes
+        push: yes
+        force_source: true
+      with_items:
+        - "{{ git_stat.after }}"
+        - "latest"
+
+    - name: "after push deleting image in the build"
+      when: git_stat.changed == true
+      docker_image:
+        state: absent
+        name: "{{ image_name }}"
+        tag: "{{ item }}"
+      with_items:
+        - "{{ git_stat.after }}"
+        - "latest"
+
+    - name: "logging out from docker hub"
+      when: git_stat.changed == true
+      docker_login:
+        username: "{{ docker_user }}"
+        password: "{{ docker_pass }}"  
+        state: absent
+
+
+- name: "creating and running container on the test server"
+  hosts: test
+  become: true
+  vars:
+    packages:
+      - docker
+      - pip
+  vars_files: myvars
+  tasks: 
+    
+
+    - name: "installing required packages"
+      yum:
+        name: "{{ packages }}"
+        state: present
+    
+    - name: "adding Ec2-user to docker group"
+      user:
+        name: "ec2-user"
+        groups:
+          - docker
+        append: true
+            
+            
+    - name: "installing python library for the Docker Engine API"
+      pip:
+        name: docker-py
+            
+            
+    - name: "starting and enabling docker"
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+
+     - name: "pulling the new image from the hub to the deploy host group"
+       docker_image:
+         name: "{{ image_name }}"
+         source: pull
+         force_source: true
+       register: image_stat
+
+     - name: "creating and running the container in deploy host group"
+       when: image_stat.changed == true
+       docker_container:
+         name: "myapp"
+         image: "{{ image_name }}:latest"
+         ports:
+           - "80:4000"
+         recreate: yes
+         state: started
+         pull: true
+         detach: true
