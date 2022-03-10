@@ -25,3 +25,4 @@ the second part of the playbook pull the image from the docker hub and creates a
 >is an open source automation server. It helps automate the parts of software development related to building, testing, and deploying, facilitating continuous integration and continuous delivery. It is a server-based system that runs in servlet containers
 
 
+![image](https://github.com/yesudas-philiph/Automate-container-image-builds-and-container-deploy-with-jenkins/blob/main/diagam.jpeg)
